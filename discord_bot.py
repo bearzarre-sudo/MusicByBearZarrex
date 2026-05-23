@@ -36,7 +36,14 @@ PREFIX = "!"
 # FFMPEG
 # ==================================================
 
-FFMPEG_PATH = "ffmpeg"
+import shutil
+
+FFMPEG_PATH = shutil.which("ffmpeg")
+if not FFMPEG_PATH:
+    FFMPEG_PATH = "/usr/bin/ffmpeg"
+    if not os.path.exists(FFMPEG_PATH):
+        logger.warning("⚠️ FFmpeg no encontrado en rutas conocidas")
+        FFMPEG_PATH = "ffmpeg"
 
 # ==================================================
 # YT-DLP CONFIG
@@ -51,7 +58,10 @@ ydl_opts = {
     "logtostderr": False,
     "no_warnings": True,
     "default_search": "auto",
-    "source_address": "0.0.0.0",
+    "socket_timeout": 30,
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    }
 }
 
 ydl_playlist_opts = {
@@ -91,6 +101,7 @@ def get_audio_info(url):
             info = ydl.extract_info(url, download=False)
 
             if info is None:
+                logger.warning(f"Info es None para: {url}")
                 return None, None
 
             if "entries" in info:
@@ -98,14 +109,18 @@ def get_audio_info(url):
 
             audio_url = info.get("url")
             title = info.get("title", "Desconocido")
+            
+            if not audio_url:
+                logger.error(f"No audio URL encontrada para: {title}")
+                return None, None
 
-            logger.info(f"Audio obtenido: {title}")
+            logger.info(f"✅ Audio obtenido: {title}")
 
             return audio_url, title
 
     except Exception as e:
 
-        logger.error(f"Error obteniendo audio: {e}")
+        logger.error(f"❌ Error obteniendo audio: {e}", exc_info=True)
 
         return None, None
 
@@ -154,7 +169,8 @@ async def create_audio_source(audio_url):
         "before_options": (
             "-reconnect 1 "
             "-reconnect_streamed 1 "
-            "-reconnect_delay_max 5"
+            "-reconnect_delay_max 5 "
+            "-c:a libopus"
         ),
         "options": "-vn"
     }
@@ -167,11 +183,15 @@ async def create_audio_source(audio_url):
             **ffmpeg_options
         )
 
+        logger.info(f"✅ Source de audio creado con FFmpeg: {FFMPEG_PATH}")
         return source
 
+    except FileNotFoundError:
+        logger.error(f"❌ FFmpeg no encontrado en: {FFMPEG_PATH}")
+        return None
     except Exception as e:
 
-        logger.error(f"Error creando source: {e}")
+        logger.error(f"❌ Error creando source: {e}", exc_info=True)
 
         return None
 
@@ -185,6 +205,7 @@ async def play_next(ctx):
 
     if guild_id not in queues or len(queues[guild_id]) == 0:
 
+        logger.info("📭 Cola vacía")
         await ctx.send("📭 Cola vacía. Desconectando...")
 
         if ctx.voice_client:
@@ -194,7 +215,7 @@ async def play_next(ctx):
 
     url = queues[guild_id].pop(0)
 
-    logger.info(f"Reproduciendo: {url}")
+    logger.info(f"🎵 Reproduciendo: {url}")
 
     audio_url, title = await asyncio.to_thread(
         get_audio_info,
@@ -203,8 +224,8 @@ async def play_next(ctx):
 
     if not audio_url:
 
-        await ctx.send("❌ No se pudo obtener el audio.")
-
+        logger.error(f"❌ No se pudo obtener audio para: {url}")
+        await ctx.send("❌ No se pudo obtener el audio. Saltando...")
         await play_next(ctx)
 
         return
@@ -213,8 +234,8 @@ async def play_next(ctx):
 
     if not source:
 
-        await ctx.send("❌ Error creando fuente de audio.")
-
+        logger.error(f"❌ Error creando source para: {title}")
+        await ctx.send("❌ Error creando fuente de audio. Saltando...")
         await play_next(ctx)
 
         return
@@ -222,22 +243,21 @@ async def play_next(ctx):
     def after_playing(error):
 
         if error:
-            logger.error(f"Error reproducción: {error}")
-
-        future = asyncio.run_coroutine_threadsafe(
-            play_next(ctx),
-            bot.loop
-        )
+            logger.error(f"❌ Error en reproducción: {error}", exc_info=True)
+        else:
+            logger.info(f"✅ Canción terminada: {title}")
 
         try:
-            future.result()
+            asyncio.run_coroutine_threadsafe(
+                play_next(ctx),
+                bot.loop
+            )
         except Exception as e:
-            logger.error(f"Error en after(): {e}")
+            logger.error(f"❌ Error en after_playing: {e}", exc_info=True)
 
     try:
 
         if not ctx.voice_client:
-
             await ctx.author.voice.channel.connect()
 
         ctx.voice_client.play(
@@ -246,13 +266,12 @@ async def play_next(ctx):
         )
 
         await ctx.send(f"🎵 Reproduciendo: **{title}**")
+        logger.info(f"✅ Reproduciendo: {title}")
 
     except Exception as e:
 
-        logger.error(f"Error reproduciendo: {e}")
-
+        logger.error(f"❌ Error reproduciendo: {e}", exc_info=True)
         await ctx.send(f"❌ Error reproduciendo: {e}")
-
         await play_next(ctx)
 
 # ==================================================
@@ -460,7 +479,22 @@ async def test(ctx):
 @bot.event
 async def on_ready():
 
-    logger.info(f"Bot conectado como {bot.user}")
+    logger.info(f"✅ Bot conectado como {bot.user}")
+    logger.info(f"📁 FFmpeg path: {FFMPEG_PATH}")
+    
+    # Verificar FFmpeg
+    try:
+        result = await asyncio.to_thread(
+            os.popen,
+            f"{FFMPEG_PATH} -version"
+        )
+        output = result.read()
+        if output:
+            logger.info("✅ FFmpeg está disponible y funcional")
+        else:
+            logger.warning("⚠️ FFmpeg no responde correctamente")
+    except Exception as e:
+        logger.warning(f"⚠️ No se pudo verificar FFmpeg: {e}")
 
 # ==================================================
 # START BOT
