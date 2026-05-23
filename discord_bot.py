@@ -169,7 +169,8 @@ async def create_audio_source(audio_url):
         "before_options": (
             "-reconnect 1 "
             "-reconnect_streamed 1 "
-            "-reconnect_delay_max 5"
+            "-reconnect_delay_max 5 "
+            "-c:a libopus"
         ),
         "options": "-vn"
     }
@@ -199,6 +200,7 @@ async def create_audio_source(audio_url):
             **ffmpeg_options
         )
 
+<<<<<<< HEAD
         logger.info(f"✅ Source de audio creado exitosamente")
         return source
 
@@ -211,6 +213,18 @@ async def create_audio_source(audio_url):
         return None
     except Exception as e:
         logger.error(f"❌ Error desconocido creando source: {type(e).__name__}: {e}", exc_info=True)
+=======
+        logger.info(f"✅ Source de audio creado con FFmpeg: {FFMPEG_PATH}")
+        return source
+
+    except FileNotFoundError:
+        logger.error(f"❌ FFmpeg no encontrado en: {FFMPEG_PATH}")
+        return None
+    except Exception as e:
+
+        logger.error(f"❌ Error creando source: {e}", exc_info=True)
+
+>>>>>>> 4c348f96875ba45362781ab76a79ebbe2a91db0d
         return None
 
 # ==================================================
@@ -252,8 +266,13 @@ async def play_next(ctx):
 
     if not source:
 
+<<<<<<< HEAD
         logger.error(f"❌ Fallo criar source - Saltando: {title}")
         await ctx.send(f"❌ **Error de audio**: No se pudo reproducir `{title}`. Saltando...")
+=======
+        logger.error(f"❌ Error creando source para: {title}")
+        await ctx.send("❌ Error creando fuente de audio. Saltando...")
+>>>>>>> 4c348f96875ba45362781ab76a79ebbe2a91db0d
         await play_next(ctx)
 
         return
