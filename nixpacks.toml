@@ -1,5 +1,9 @@
 [phases.setup]
-nixPkgs = ["python311", "ffmpeg"]
+nixPkgs = ["python311", "ffmpeg", "libopus"]
+
+[phases.install]
+dependencyFile = "requirements.txt"
+installCmd = "pip install --upgrade pip setuptools && pip install -r"
 
 [start]
 cmd = "python discord_bot.py"
